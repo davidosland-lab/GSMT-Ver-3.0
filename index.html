@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Global Markets Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="border-b bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div class="flex items-center gap-3">
+        <i class="fa-solid fa-chart-line text-blue-600 text-2xl"></i>
+        <div>
+          <h1 class="text-xl font-semibold">Global Markets Tracker</h1>
+          <p class="text-sm text-slate-500">Compare major Asian, European, and U.S. indices</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 flex-wrap">
+        <div class="flex items-center gap-2">
+          <label for="modeSelect" class="text-sm text-slate-600">View</label>
+          <select id="modeSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="line">Performance (Line)</option>
+            <option value="candlestick">Candlestick (Single Index)</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2" id="indexPickerWrap" title="Choose index for candlestick view">
+          <label for="indexSelect" class="text-sm text-slate-600">Index</label>
+          <select id="indexSelect" class="border rounded-md px-2 py-1 text-sm"></select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="intervalSelect" class="text-sm text-slate-600">Interval</label>
+          <select id="intervalSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="5min">5m</option>
+            <option value="15min">15m</option>
+            <option value="30min">30m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1day" selected>1d</option>
+            <option value="1week">1w</option>
+            <option value="1month">1m</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="dateSelect" class="text-sm text-slate-600">Date</label>
+          <input type="date" id="dateSelect" class="border rounded-md px-2 py-1 text-sm" />
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="providerSelect" class="text-sm text-slate-600">Data</label>
+          <select id="providerSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="demo">Demo (offline)</option>
+            <option value="yfinance">YFinance (live data)</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2" id="apiStatus">
+          <span class="text-xs text-slate-500" id="statusIndicator">🔴 Demo Mode</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-slate-600">
+            <input type="checkbox" id="showMarketHours" checked class="mr-1">
+            Show Market Hours
+          </label>
+        </div>
+        <button id="refreshBtn" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-2 rounded-md">
+          <i class="fa-solid fa-rotate"></i> Refresh
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <section class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border">
+        <div id="chart" class="h-[520px]"></div>
+      </div>
+      <aside class="bg-white rounded-xl shadow-sm border p-4">
+        <h2 class="font-semibold mb-3">Select Indices</h2>
+        <div class="space-y-2 text-sm mb-4" id="indicesSelector">
+          <!-- Checkboxes will be populated here -->
+        </div>
+        
+        <div class="mb-4">
+          <button id="selectAllBtn" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded mr-2">Select All</button>
+          <button id="selectNoneBtn" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded mr-2">None</button>
+          <button id="selectRegionBtn" class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded">By Region</button>
+        </div>
+
+        <h2 class="font-semibold mb-2">Active Indices</h2>
+        <ul id="legendList" class="space-y-2 text-sm mb-4"></ul>
+        
+        <div class="text-xs text-slate-500 mb-4">
+          <p>Tip: Use mouse wheel or pinch to zoom. Drag to pan. Double-click to reset.</p>
+        </div>
+        
+        <div class="mb-4">
+          <h3 class="font-semibold mb-2 text-sm">Market Hours (Australian Time)</h3>
+          <div class="text-xs text-slate-600 space-y-1" id="marketHoursList">
+            <div><strong>🇦🇺 Australia: 10:00-16:00</strong></div>
+            <div class="ml-3">
+              <div><span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx200)"></span> ASX 200 • <span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx300)"></span> ASX 300</div>
+              <div><span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx50)"></span> ASX 50 • <span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx100)"></span> ASX 100 • <span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx-small)"></span> Small Cap</div>
+            </div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-nikkei)"></span> Japan: 11:00-17:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-hsi)"></span> Hong Kong: 12:30-19:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-sse)"></span> China: 12:30-18:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-nifty)"></span> India: 14:45-21:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-ftse)"></span> UK: 19:00-03:30*</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-dax)"></span> Germany: 18:00-02:30*</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-cac)"></span> France: 18:00-02:30*</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-sp500)"></span> US: 01:30-08:00*</div>
+            <div class="text-xs text-slate-400 mt-2">* Closes next day</div>
+          </div>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold mb-2 text-sm">About</h3>
+          <p class="text-sm text-slate-600">This tracker uses YFinance-style data to compare major global stock indices. X-axis shows 24-hour Australian time (00:00 = midnight Sydney) with market hours indicators. Select which indices to display using the checkboxes above.</p>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-xs text-slate-500">
+    <p>Built as a static web app. Data courtesy of your selected provider.</p>
+  </footer>
+
+  <script src="js/providers.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

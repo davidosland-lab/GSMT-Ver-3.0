@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Global Markets Tracker - Live Data</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    /* Basic overrides and utilities */
+    :root {
+      --color-asx200: #8b5cf6;    /* purple */
+      --color-asx300: #7c3aed;    /* violet */
+      --color-asx50: #a855f7;     /* light purple */
+      --color-asx100: #6d28d9;    /* dark purple */
+      --color-asx-small: #c084fc; /* light violet */
+      --color-nikkei: #2563eb;    /* blue */
+      --color-hsi: #f97316;       /* orange */
+      --color-sse: #16a34a;       /* green */
+      --color-nifty: #9333ea;     /* purple */
+      --color-ftse: #ef4444;      /* red */
+      --color-dax: #0891b2;       /* teal */
+      --color-cac: #a16207;       /* amber */
+      --color-sp500: #0ea5e9;     /* sky */
+      --color-djia: #10b981;      /* emerald */
+      --color-nasdaq: #e11d48;    /* rose */
+    }
+
+    html, body {
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
+    }
+
+    #chart {
+      width: 100%;
+    }
+
+    /* Legend badges */
+    .legend-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div class="container mx-auto p-4 max-w-7xl">
+    <!-- Header -->
+    <div class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h1 class="text-xl font-semibold">Global Markets Tracker <span class="text-green-600">Live</span></h1>
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2" id="apiStatus">
+            <span class="text-xs font-medium" id="statusIndicator">🟡 Loading live data...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div class="flex items-center gap-2">
+          <label for="modeSelect" class="text-sm text-slate-600">View</label>
+          <select id="modeSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="line">Line (Multi)</option>
+            <option value="candle">Candlestick (Single)</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <label for="intervalSelect" class="text-sm text-slate-600">Interval</label>
+          <select id="intervalSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="5m">5 Minutes</option>
+            <option value="15m">15 Minutes</option>
+            <option value="30m">30 Minutes</option>
+            <option value="1h">1 Hour</option>
+            <option value="1d">1 Day</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <label for="dateSelect" class="text-sm text-slate-600">Date</label>
+          <input type="date" id="dateSelect" class="border rounded-md px-2 py-1 text-sm" />
+        </div>
+        
+        <button id="refreshBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Index Selection (for multi-line mode) -->
+    <div id="indexSelectionWrap" class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <h3 class="text-sm font-medium text-slate-700 mb-3">Select Markets to Compare (Live Data)</h3>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3" id="indexCheckboxes">
+        <!-- Checkboxes will be populated by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Single Index Selection (for candlestick mode) -->
+    <div id="singleIndexWrap" class="bg-white rounded-lg shadow-sm border p-4 mb-6" style="display: none;">
+      <h3 class="text-sm font-medium text-slate-700 mb-3">Select Market for Candlestick View</h3>
+      <select id="indexSelect" class="border rounded-md px-2 py-1 text-sm w-full sm:w-auto">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+    </div>
+
+    <!-- Chart -->
+    <div class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <div id="chart" style="height: 600px;"></div>
+    </div>
+
+    <!-- Legend -->
+    <div class="bg-white rounded-lg shadow-sm border p-4">
+      <h3 class="text-sm font-medium text-slate-700 mb-3">Legend</h3>
+      <div class="flex flex-wrap gap-3" id="legendList">
+        <!-- Legend will be populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Market Index Definitions with Live Data
+    const INDEX_DEFS = [
+      // Australian Markets
+      { code: '^AXJO', name: 'ASX 200 (AU)', color: getCSS('--color-asx200'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AXKO', name: 'ASX 300 (AU)', color: getCSS('--color-asx300'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AFLI', name: 'ASX 50 (AU)', color: getCSS('--color-asx50'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AXMD', name: 'ASX 100 (AU)', color: getCSS('--color-asx100'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AXSO', name: 'ASX Small Cap (AU)', color: getCSS('--color-asx-small'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      
+      // Asian Markets
+      { code: '^N225', name: 'Nikkei 225 (JP)', color: getCSS('--color-nikkei'), marketOpen: '01:00', marketClose: '07:00', timezone: 'JST', region: 'Asia' },
+      { code: '^HSI', name: 'Hang Seng (HK)', color: getCSS('--color-hsi'), marketOpen: '03:30', marketClose: '10:00', timezone: 'HKT', region: 'Asia' },
+      { code: '000001.SS', name: 'SSE Composite (CN)', color: getCSS('--color-sse'), marketOpen: '03:30', marketClose: '09:00', timezone: 'CST', region: 'Asia' },
+      { code: '^NSEI', name: 'NIFTY 50 (IN)', color: getCSS('--color-nifty'), marketOpen: '05:15', marketClose: '11:30', timezone: 'IST', region: 'Asia' },
+      
+      // European Markets  
+      { code: '^FTSE', name: 'FTSE 100 (UK)', color: getCSS('--color-ftse'), marketOpen: '09:00', marketClose: '17:30', timezone: 'GMT', region: 'Europe' },
+      { code: '^GDAXI', name: 'DAX (DE)', color: getCSS('--color-dax'), marketOpen: '09:00', marketClose: '17:30', timezone: 'CET', region: 'Europe' },
+      { code: '^FCHI', name: 'CAC 40 (FR)', color: getCSS('--color-cac'), marketOpen: '09:00', marketClose: '17:30', timezone: 'CET', region: 'Europe' },
+      
+      // US Markets
+      { code: '^GSPC', name: 'S&P 500 (US)', color: getCSS('--color-sp500'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+      { code: '^DJI', name: 'Dow Jones (US)', color: getCSS('--color-djia'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+      { code: '^IXIC', name: 'NASDAQ (US)', color: getCSS('--color-nasdaq'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+    ];
+
+    function getCSS(prop) {
+      return getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
+    }
+
+    function intervalToMs(interval) {
+      const map = { '5m': 5*60*1000, '15m': 15*60*1000, '30m': 30*60*1000, '1h': 60*60*1000, '1d': 24*60*60*1000 };
+      return map[interval] || 5*60*1000;
+    }
+
+    // Live Data Fetching Function
+    async function fetchLiveData(symbol, interval, selectedDate) {
+      const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000'
+        : 'https://global-indices-tracker-production.up.railway.app';
+      
+      try {
+        console.log(`🔄 Fetching live data: ${symbol}, interval: ${interval}, date: ${selectedDate}`);
+        
+        const response = await fetch(
+          `${API_BASE}/api/stock/${encodeURIComponent(symbol)}?interval=${interval}&date=${selectedDate}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        console.log('API Response status:', response.status, response.statusText);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error Response:', errorText);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const json = await response.json();
+        console.log('API Response data:', json);
+        
+        if (json.error) {
+          throw new Error(json.error);
+        }
+        
+        // Check if we have data
+        if (!json.data || json.data.length === 0) {
+          console.warn('API returned no data for', symbol);
+          throw new Error('No market data available');
+        }
+        
+        console.log(`✅ Successfully got ${json.data.length} data points from live API`);
+        
+        // Transform API response to expected format
+        return json.data.map(item => ({
+          time: new Date(item.time),
+          open: item.open || 0,
+          high: item.high || 0,
+          low: item.low || 0,
+          close: item.close || 0,
+          value: item.value || item.close || 0
+        }));
+        
+      } catch (error) {
+        console.error('Live data fetch error:', error);
+        throw error;
+      }
+    }
+
+    // Get Live Series Data
+    async function getLiveData(symbol, interval, selectedDate) {
+      try { 
+        updateApiStatus('🟡 Fetching live data...', 'text-blue-600');
+        const data = await fetchLiveData(symbol, interval, selectedDate);
+        updateApiStatus('🟢 Live market data', 'text-green-600');
+        console.log(`✅ Successfully loaded ${data.length} live data points for ${symbol}`);
+        return data;
+      }
+      catch(error) { 
+        console.error('Live data error:', error);
+        updateApiStatus('🔴 Connection error', 'text-red-600');
+        throw error;
+      }
+    }
+
+    function updateApiStatus(message, colorClass) {
+      const indicator = document.getElementById('statusIndicator');
+      if (indicator) {
+        indicator.textContent = message;
+        indicator.className = `text-xs font-medium ${colorClass}`;
+      }
+    }
+
+    // DOM Elements
+    const chart = echarts.init(document.getElementById('chart'));
+    const modeSelect = document.getElementById('modeSelect');
+    const intervalSelect = document.getElementById('intervalSelect');
+    const dateSelect = document.getElementById('dateSelect');
+    const indexSelect = document.getElementById('indexSelect');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const legendList = document.getElementById('legendList');
+    const indexSelectionWrap = document.getElementById('indexSelectionWrap');
+    const singleIndexWrap = document.getElementById('singleIndexWrap');
+
+    // Set default date to today
+    dateSelect.value = new Date().toISOString().split('T')[0];
+
+    // Populate checkboxes and dropdowns
+    function populateIndexControls() {
+      const checkboxContainer = document.getElementById('indexCheckboxes');
+      
+      INDEX_DEFS.forEach(idx => {
+        // Multi-select checkboxes
+        const wrapper = document.createElement('div');
+        wrapper.className = 'flex items-center space-x-2';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `idx_${idx.code}`;
+        checkbox.value = idx.code;
+        checkbox.className = 'rounded border-gray-300';
+        
+        // Default selections for demo
+        if (['^AXJO', '^GSPC', '^N225'].includes(idx.code)) {
+          checkbox.checked = true;
+        }
+        
+        const label = document.createElement('label');
+        label.htmlFor = `idx_${idx.code}`;
+        label.textContent = idx.name;
+        label.className = 'text-sm text-gray-700 cursor-pointer';
+        
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(label);
+        checkboxContainer.appendChild(wrapper);
+        
+        // Single select dropdown
+        const option = document.createElement('option');
+        option.value = idx.code;
+        option.textContent = idx.name;
+        indexSelect.appendChild(option);
+      });
+    }
+
+    function getSelectedIndices() {
+      const checkboxes = document.querySelectorAll('#indexCheckboxes input[type="checkbox"]:checked');
+      return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    function toggleMode() {
+      const mode = modeSelect.value;
+      if (mode === 'line') {
+        indexSelectionWrap.style.display = 'block';
+        singleIndexWrap.style.display = 'none';
+      } else {
+        indexSelectionWrap.style.display = 'none';  
+        singleIndexWrap.style.display = 'block';
+      }
+    }
+
+    function buildLineOption(percentSeries, selectedDate) {
+      const series = Object.keys(percentSeries).map(code => {
+        const idx = INDEX_DEFS.find(i => i.code === code);
+        return {
+          name: idx ? idx.name : code,
+          type: 'line',
+          data: percentSeries[code],
+          smooth: true,
+          lineStyle: { color: idx ? idx.color : '#000', width: 2 },
+          itemStyle: { color: idx ? idx.color : '#000' }
+        };
+      });
+
+      return {
+        title: { text: `Global Markets - ${selectedDate}`, left: 'center' },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+        xAxis: { type: 'time', boundaryGap: false },
+        yAxis: { type: 'value', name: 'Change (%)' },
+        series: series,
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true }
+      };
+    }
+
+    function buildCandleOption(data, selectedDate) {
+      const candleData = data.map(d => [d.open, d.close, d.low, d.high]);
+      const times = data.map(d => d.time);
+
+      return {
+        title: { text: `Candlestick - ${selectedDate}`, left: 'center' },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: times, boundaryGap: false },
+        yAxis: { type: 'value' },
+        series: [{
+          type: 'candlestick',
+          data: candleData,
+          itemStyle: {
+            color: '#26a69a',
+            color0: '#ef5350',
+            borderColor: '#26a69a', 
+            borderColor0: '#ef5350'
+          }
+        }],
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true }
+      };
+    }
+
+    function updateLegend(activeIndices) {
+      legendList.innerHTML = '';
+      activeIndices.forEach(idx => {
+        const item = document.createElement('div');
+        item.className = 'legend-badge';
+        item.innerHTML = `<div class="legend-dot" style="background-color: ${idx.color};"></div><span class="text-sm">${idx.name}</span>`;
+        legendList.appendChild(item);
+      });
+    }
+
+    async function render() {
+      const mode = modeSelect.value;
+      const interval = intervalSelect.value;
+      const selectedDate = dateSelect.value;
+
+      if (!selectedDate) return;
+
+      chart.showLoading('default', { maskColor: 'rgba(255,255,255,0.6)' });
+      try {
+        if (mode === 'line') {
+          const selectedCodes = getSelectedIndices();
+          if (selectedCodes.length === 0) {
+            chart.setOption({
+              title: { text: 'Please select at least one index', left: 'center', textStyle: { color: '#64748b' } },
+              series: []
+            });
+            updateLegend([]);
+            return;
+          }
+
+          const results = await Promise.all(selectedCodes.map(c => getLiveData(c, interval, selectedDate)));
+          const percentSeries = {};
+          
+          results.forEach((data, i) => {
+            const code = selectedCodes[i];
+            if (data.length > 0) {
+              const base = data[0].value;
+              percentSeries[code] = data.map(d => [d.time, ((d.value - base) / base * 100).toFixed(2)]);
+            }
+          });
+          
+          const opt = buildLineOption(percentSeries, selectedDate);
+          chart.setOption(opt, true);
+          
+          // Update legend to only show active selected markets
+          const activeIndices = INDEX_DEFS.filter(idx => percentSeries[idx.code]);
+          updateLegend(activeIndices);
+        } else {
+          const code = indexSelect.value;
+          const idx = INDEX_DEFS.find(i => i.code === code) || { name: code, color: '#000' };
+          const data = await getLiveData(code, interval, selectedDate);
+          const opt = buildCandleOption(data, selectedDate);
+          chart.setOption(opt, true);
+          updateLegend([idx]);
+        }
+      } catch (e) {
+        console.error('Render error:', e);
+        updateApiStatus('🔴 Data loading failed', 'text-red-600');
+        chart.setOption({ 
+          title: { text: 'Error loading live data - please try again', left: 'center', textStyle: { color: '#ef4444' } },
+          series: []
+        });
+      } finally {
+        chart.hideLoading();
+      }
+    }
+
+    // Test API connection on page load
+    async function testApiConnection() {
+      const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000'
+        : 'https://global-indices-tracker-production.up.railway.app';
+      
+      try {
+        console.log('🔄 Testing API connection...');
+        const response = await fetch(`${API_BASE}/api/health`);
+        const data = await response.json();
+        
+        if (data.status === 'healthy') {
+          console.log('✅ API Connection Success:', data.message);
+          updateApiStatus('🟢 Live data ready', 'text-green-600');
+          
+          // Trigger a render with live data
+          console.log('🔄 Loading initial live data...');
+          setTimeout(render, 500);
+        } else {
+          console.log('⚠️ API Unhealthy:', data);
+          updateApiStatus('🟡 API issues', 'text-yellow-600');
+        }
+      } catch (error) {
+        console.error('❌ API Connection Failed:', error);
+        updateApiStatus('🔴 Connection failed', 'text-red-600');
+      }
+    }
+
+    // Event Listeners
+    modeSelect.addEventListener('change', () => { toggleMode(); render(); });
+    [intervalSelect, dateSelect].forEach(el => el.addEventListener('change', render));
+    refreshBtn.addEventListener('click', render);
+    
+    // Checkbox change listeners
+    document.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox' && e.target.closest('#indexCheckboxes')) {
+        render();
+      }
+    });
+
+    // Initialize
+    populateIndexControls();
+    toggleMode();
+    testApiConnection();
+  </script>
+</body>
+</html>

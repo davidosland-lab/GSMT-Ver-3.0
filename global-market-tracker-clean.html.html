@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Global Markets Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    /* Basic overrides and utilities */
+    :root {
+      --color-asx200: #8b5cf6;    /* purple */
+      --color-asx300: #7c3aed;    /* violet */
+      --color-asx50: #a855f7;     /* light purple */
+      --color-asx100: #6d28d9;    /* dark purple */
+      --color-asx-small: #c084fc; /* light violet */
+      --color-nikkei: #2563eb;    /* blue */
+      --color-hsi: #f97316;       /* orange */
+      --color-sse: #16a34a;       /* green */
+      --color-nifty: #9333ea;     /* purple */
+      --color-ftse: #ef4444;      /* red */
+      --color-dax: #0891b2;       /* teal */
+      --color-cac: #a16207;       /* amber */
+      --color-sp500: #0ea5e9;     /* sky */
+      --color-djia: #10b981;      /* emerald */
+      --color-nasdaq: #e11d48;    /* rose */
+    }
+
+    html, body {
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
+    }
+
+    #chart {
+      width: 100%;
+    }
+
+    /* Legend badges */
+    .legend-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 9999px;
+    }
+
+    /* API key visibility toggle */
+    #apiKeyWrap { display:none; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="border-b bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div class="flex items-center gap-3">
+        <i class="fa-solid fa-chart-line text-blue-600 text-2xl"></i>
+        <div>
+          <h1 class="text-xl font-semibold">Global Markets Tracker</h1>
+          <p class="text-sm text-slate-500">Compare major Asian, European, and U.S. indices</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 flex-wrap">
+        <div class="flex items-center gap-2">
+          <label for="modeSelect" class="text-sm text-slate-600">View</label>
+          <select id="modeSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="line">Performance (Line)</option>
+            <option value="candlestick">Candlestick (Single Index)</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2" id="indexPickerWrap" title="Choose index for candlestick view">
+          <label for="indexSelect" class="text-sm text-slate-600">Index</label>
+          <select id="indexSelect" class="border rounded-md px-2 py-1 text-sm"></select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="intervalSelect" class="text-sm text-slate-600">Interval</label>
+          <select id="intervalSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="5min">5m</option>
+            <option value="15min">15m</option>
+            <option value="30min">30m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1day" selected>1d</option>
+            <option value="1week">1w</option>
+            <option value="1month">1m</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="dateSelect" class="text-sm text-slate-600">Date</label>
+          <input type="date" id="dateSelect" class="border rounded-md px-2 py-1 text-sm" />
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="providerSelect" class="text-sm text-slate-600">Data</label>
+          <select id="providerSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="demo">Demo (offline)</option>
+            <option value="yfinance">YFinance (live data)</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2" id="apiStatus">
+          <span class="text-xs text-slate-500" id="statusIndicator">🔴 Demo Mode</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-slate-600">
+            <input type="checkbox" id="showMarketHours" checked class="mr-1">
+            Show Market Hours
+          </label>
+        </div>
+        <button id="refreshBtn" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-2 rounded-md">
+          <i class="fa-solid fa-rotate"></i> Refresh
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <section class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border">
+        <div id="chart" class="h-[520px]"></div>
+      </div>
+      <aside class="bg-white rounded-xl shadow-sm border p-4">
+        <h2 class="font-semibold mb-3">Select Indices</h2>
+        <div class="space-y-2 text-sm mb-4" id="indicesSelector">
+          <!-- Radio buttons will be populated here -->
+        </div>
+        
+        <div class="mb-4">
+          <button id="selectAllBtn" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded mr-2">Select All</button>
+          <button id="selectNoneBtn" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded mr-2">None</button>
+          <button id="selectRegionBtn" class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded">By Region</button>
+        </div>
+
+        <h2 class="font-semibold mb-2">Active Indices</h2>
+        <ul id="legendList" class="space-y-2 text-sm mb-4"></ul>
+        
+        <div class="text-xs text-slate-500 mb-4">
+          <p>Tip: Use mouse wheel or pinch to zoom. Drag to pan. Double-click to reset.</p>
+        </div>
+        
+        <div class="mb-4">
+          <h3 class="font-semibold mb-2 text-sm">Market Hours (Australian Time)</h3>
+          <div class="text-xs text-slate-600 space-y-1" id="marketHoursList">
+            <div><strong>🇦🇺 Australia: 10:00-16:00</strong></div>
+            <div class="ml-3">
+              <div><span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx200)"></span> ASX 200 • <span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx300)"></span> ASX 300</div>
+              <div><span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx50)"></span> ASX 50 • <span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx100)"></span> ASX 100 • <span class="inline-block w-2 h-2 rounded-full" style="background: var(--color-asx-small)"></span> Small Cap</div>
+            </div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-nikkei)"></span> Japan: 11:00-17:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-hsi)"></span> Hong Kong: 12:30-19:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-sse)"></span> China: 12:30-18:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-nifty)"></span> India: 14:45-21:00</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-ftse)"></span> UK: 19:00-03:30*</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-dax)"></span> Germany: 18:00-02:30*</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-cac)"></span> France: 18:00-02:30*</div>
+            <div><span class="inline-block w-3 h-3 rounded-full" style="background: var(--color-sp500)"></span> US: 01:30-08:00*</div>
+            <div class="text-xs text-slate-400 mt-2">* Closes next day</div>
+          </div>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold mb-2 text-sm">About</h3>
+          <p class="text-sm text-slate-600">This tracker uses YFinance-style data to compare major global stock indices. X-axis shows 24-hour Australian time (00:00 = midnight Sydney) with market hours indicators. Select which indices to display using the checkboxes above.</p>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-xs text-slate-500">
+    <p>Built as a static web app. Data courtesy of your selected provider.</p>
+  </footer>
+
+  <script>
+    /* Data providers: demo data generator and Twelve Data fetcher */
+    (function(){
+      function getCSS(varName) {
+        return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      }
+
+      // Index definitions with market hours (in UTC) and regions
+      const INDEX_DEFS = [
+        // Australian Indices (times in Australian local time reference)
+        { code: '^AXJO', name: 'ASX 200 (Australia)', color: getCSS('--color-asx200'), marketOpen: '10:00', marketClose: '16:00', timezone: 'AEDT', region: 'Oceania' },
+        { code: '^AXKO', name: 'ASX 300 (Australia)', color: getCSS('--color-asx300'), marketOpen: '10:00', marketClose: '16:00', timezone: 'AEDT', region: 'Oceania' },
+        { code: '^AFLI', name: 'ASX 50 (Australia)', color: getCSS('--color-asx50'), marketOpen: '10:00', marketClose: '16:00', timezone: 'AEDT', region: 'Oceania' },
+        { code: '^AXMD', name: 'ASX 100 (Australia)', color: getCSS('--color-asx100'), marketOpen: '10:00', marketClose: '16:00', timezone: 'AEDT', region: 'Oceania' },
+        { code: '^AXSO', name: 'ASX Small Cap (Australia)', color: getCSS('--color-asx-small'), marketOpen: '10:00', marketClose: '16:00', timezone: 'AEDT', region: 'Oceania' },
+        // Asian Indices (times shown in Australian reference - when they trade relative to Sydney midnight)
+        { code: '^N225', name: 'Nikkei 225 (Japan)', color: getCSS('--color-nikkei'), marketOpen: '11:00', marketClose: '17:00', timezone: 'JST', region: 'Asia' },
+        { code: '^HSI', name: 'Hang Seng (Hong Kong)', color: getCSS('--color-hsi'), marketOpen: '12:30', marketClose: '19:00', timezone: 'HKT', region: 'Asia' },
+        { code: '000001.SS', name: 'SSE Composite (China)', color: getCSS('--color-sse'), marketOpen: '12:30', marketClose: '18:00', timezone: 'CST', region: 'Asia' },
+        { code: '^NSEI', name: 'NIFTY 50 (India)', color: getCSS('--color-nifty'), marketOpen: '14:45', marketClose: '21:00', timezone: 'IST', region: 'Asia' },
+        // European Indices (times shown in Australian reference)
+        { code: '^FTSE', name: 'FTSE 100 (UK)', color: getCSS('--color-ftse'), marketOpen: '19:00', marketClose: '03:30', timezone: 'GMT', region: 'Europe' },
+        { code: '^GDAXI', name: 'DAX (Germany)', color: getCSS('--color-dax'), marketOpen: '18:00', marketClose: '02:30', timezone: 'CET', region: 'Europe' },
+        { code: '^FCHI', name: 'CAC 40 (France)', color: getCSS('--color-cac'), marketOpen: '18:00', marketClose: '02:30', timezone: 'CET', region: 'Europe' },
+        // US Indices (times shown in Australian reference)  
+        { code: '^GSPC', name: 'S&P 500 (US)', color: getCSS('--color-sp500'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+        { code: '^DJI', name: 'Dow Jones (US)', color: getCSS('--color-djia'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+        { code: '^IXIC', name: 'NASDAQ (US)', color: getCSS('--color-nasdaq'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+      ];
+
+      function genRandomWalk({ points = 400, start = 1000, drift = 0.0002, vol = 0.01, seed = 42, intervalMs = 24*3600*1000 }) {
+        // Deterministic pseudo-random for demo
+        let x = seed;
+        const rand = () => { x ^= x << 13; x ^= x >> 17; x ^= x << 5; return (x >>> 0) / 4294967296; };
+        let price = start;
+        const out = [];
+        let now = Date.now() - (points-1)*intervalMs;
+        for (let i=0;i<points;i++) {
+          const r = (drift - 0.5*vol*vol) + vol * (rand()*2 - 1);
+          price = price * Math.exp(r);
+          const open = price * (1 + (rand()-0.5)*0.01);
+          const close = price * (1 + (rand()-0.5)*0.01);
+          const high = Math.max(open, close) * (1 + rand()*0.01);
+          const low = Math.min(open, close) * (1 - rand()*0.01);
+          out.push({ time: new Date(now), open, high, low, close, value: price });
+          now += intervalMs;
+        }
+        return out;
+      }
+
+      function intervalToMs(interval) {
+        switch(interval) {
+          case '5min': return 5*60*1000;
+          case '15min': return 15*60*1000;
+          case '30min': return 30*60*1000;
+          case '1h': return 60*60*1000;
+          case '4h': return 4*60*60*1000;
+          case '1day': return 24*60*60*1000;
+          case '1week': return 7*24*60*60*1000;
+          case '1month': return 30*24*60*60*1000;
+          default: return 24*60*60*1000;
+        }
+      }
+
+      // Provider: Demo - Generate 24-hour data with market-specific timing
+      async function fetchDemoSeries(symbol, interval, selectedDate) {
+        const idx = INDEX_DEFS.find(i => i.code === symbol);
+        if (!idx) return [];
+
+        const intervalMs = intervalToMs(interval);
+        const [openHour, openMin] = idx.marketOpen.split(':').map(Number);
+        const [closeHour, closeMin] = idx.marketClose.split(':').map(Number);
+        
+        // Create date objects for market open/close times (times are now in Australian local time reference)
+        const baseDate = new Date(selectedDate + 'T00:00:00.000Z');
+        const marketOpenTime = new Date(baseDate);
+        marketOpenTime.setUTCHours(openHour, openMin, 0, 0);
+        
+        const marketCloseTime = new Date(baseDate);
+        marketCloseTime.setUTCHours(closeHour, closeMin, 0, 0);
+        
+        // Handle markets that close the next day (like European and US markets)
+        if (closeHour < openHour) {
+          marketCloseTime.setUTCDate(marketCloseTime.getUTCDate() + 1);
+        }
+
+        // Generate data points only during market hours
+        const series = [];
+        const base = Math.abs(symbol.split('').reduce((acc, ch)=>acc+ch.charCodeAt(0), 0)) % 2000 + 500;
+        let price = base;
+        let x = base; // seed for random walk
+        
+        const rand = () => { x ^= x << 13; x ^= x >> 17; x ^= x << 5; return (x >>> 0) / 4294967296; };
+        
+        let currentTime = new Date(marketOpenTime);
+        
+        while (currentTime <= marketCloseTime) {
+          const r = (0.0002 - 0.5*0.01*0.01) + 0.01 * (rand()*2 - 1);
+          price = price * Math.exp(r);
+          const open = price * (1 + (rand()-0.5)*0.01);
+          const close = price * (1 + (rand()-0.5)*0.01);
+          const high = Math.max(open, close) * (1 + rand()*0.01);
+          const low = Math.min(open, close) * (1 - rand()*0.01);
+          
+          series.push({ 
+            time: new Date(currentTime), 
+            open, high, low, close, 
+            value: close 
+          });
+          
+          currentTime = new Date(currentTime.getTime() + intervalMs);
+        }
+        
+        return series;
+      }
+
+      // Provider: YFinance (via Python backend)
+      async function fetchYFinanceSeries(symbol, interval, selectedDate) {
+        // Map frontend intervals to YFinance intervals
+        const intervalMap = { '5min': '5m', '15min': '15m', '30min': '30m', '1h': '1h', '4h': '4h', '1day': '1d' };
+        const yInterval = intervalMap[interval] || '5m';
+        
+        // Backend API URL - Replace with your actual Railway URL!
+        const API_BASE = window.location.hostname === 'localhost' 
+          ? 'http://localhost:5000'  // Local development
+          : 'https://global-indices-tracker-production.up.railway.app';  // ✅ Updated with live Railway URL
+        
+        try {
+          console.log(`YFinance API call: ${symbol}, date=${selectedDate}, interval=${yInterval}`);
+          
+          const response = await fetch(
+            `${API_BASE}/api/stock/${encodeURIComponent(symbol)}?interval=${yInterval}&date=${selectedDate}`
+          );
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const json = await response.json();
+          
+          if (json.error) {
+            throw new Error(json.error);
+          }
+          
+          // Transform API response to expected format
+          return json.data.map(item => ({
+            time: new Date(item.time),
+            open: item.open || 0,
+            high: item.high || 0,
+            low: item.low || 0,
+            close: item.close || 0,
+            value: item.value || item.close || 0
+          }));
+          
+        } catch (error) {
+          console.error(`YFinance API error for ${symbol}:`, error);
+          throw error; // Re-throw to trigger fallback
+        }
+      }
+
+      async function getSeries(symbol, interval, selectedDate, provider) {
+        if (provider === 'yfinance') {
+          try { 
+            updateApiStatus('🟡 Fetching...', 'text-yellow-600');
+            const data = await fetchYFinanceSeries(symbol, interval, selectedDate);
+            updateApiStatus('🟢 Live Data', 'text-green-600');
+            return data;
+          }
+          catch(e) { 
+            console.warn('YFinance fallback to demo for', symbol, e);
+            updateApiStatus('🔴 API Error - Using Demo', 'text-red-600');
+          }
+        } else {
+          updateApiStatus('🔴 Demo Mode', 'text-slate-500');
+        }
+        return await fetchDemoSeries(symbol, interval, selectedDate);
+      }
+
+      function updateApiStatus(message, colorClass) {
+        const indicator = document.getElementById('statusIndicator');
+        if (indicator) {
+          indicator.textContent = message;
+          indicator.className = `text-xs ${colorClass}`;
+        }
+      }
+
+      // Market hours utilities
+      function getMarketHours() {
+        return INDEX_DEFS.map(idx => ({
+          name: idx.name,
+          open: idx.marketOpen,
+          close: idx.marketClose,
+          timezone: idx.timezone,
+          color: idx.color
+        }));
+      }
+
+      window.MarketsProviders = { INDEX_DEFS, getSeries, getMarketHours };
+    })();
+
+    /* Global Markets Tracker - front-end logic using ECharts */
+    const chartEl = document.getElementById('chart');
+    const chart = echarts.init(chartEl, null, { renderer: 'canvas' });
+
+    const modeSelect = document.getElementById('modeSelect');
+    const indexSelect = document.getElementById('indexSelect');
+    const intervalSelect = document.getElementById('intervalSelect');
+    const dateSelect = document.getElementById('dateSelect');
+    const providerSelect = document.getElementById('providerSelect');
+    const apiKeyWrap = document.getElementById('apiKeyWrap');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const legendList = document.getElementById('legendList');
+
+    const { INDEX_DEFS, getSeries } = window.MarketsProviders;
+
+    // Populate indices into candlestick picker
+    INDEX_DEFS.forEach((idx, i) => {
+      const opt = document.createElement('option');
+      opt.value = idx.code; opt.textContent = idx.name; indexSelect.appendChild(opt);
+    });
+    indexSelect.value = '^AXJO'; // Default to ASX 200 for Australian users
+
+    // Create index selection checkboxes
+    function createIndexSelector() {
+      const container = document.getElementById('indicesSelector');
+      
+      INDEX_DEFS.forEach((idx, i) => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-2';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `idx_${idx.code}`;
+        checkbox.value = idx.code;
+        checkbox.checked = true; // Default all selected
+        checkbox.className = 'index-checkbox';
+        checkbox.addEventListener('change', render);
+        
+        const label = document.createElement('label');
+        label.htmlFor = `idx_${idx.code}`;
+        label.className = 'flex items-center gap-2 text-sm cursor-pointer';
+        label.innerHTML = `
+          <span class="inline-block w-3 h-3 rounded-full" style="background: ${idx.color}"></span>
+          <span>${idx.name}</span>
+        `;
+        
+        div.appendChild(checkbox);
+        div.appendChild(label);
+        container.appendChild(div);
+      });
+    }
+
+    // Get selected indices
+    function getSelectedIndices() {
+      const checkboxes = document.querySelectorAll('.index-checkbox:checked');
+      return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    createIndexSelector();
+
+    function setControlsVisibility() {
+      const mode = modeSelect.value;
+      // Show index picker for candlestick view
+      document.getElementById('indexPickerWrap').style.display = (mode === 'candlestick') ? 'flex' : 'none';
+    }
+    setControlsVisibility();
+    modeSelect.addEventListener('change', () => { setControlsVisibility(); render(); });
+    [intervalSelect, dateSelect, providerSelect].forEach(el => el.addEventListener('change', render));
+    
+    // Set default date to today
+    dateSelect.value = new Date().toISOString().split('T')[0];
+
+    // Selection helper buttons
+    document.getElementById('selectAllBtn').addEventListener('click', () => {
+      document.querySelectorAll('.index-checkbox').forEach(cb => cb.checked = true);
+      render();
+    });
+
+    document.getElementById('selectNoneBtn').addEventListener('click', () => {
+      document.querySelectorAll('.index-checkbox').forEach(cb => cb.checked = false);
+      render();
+    });
+
+    let regionCycle = 0;
+    document.getElementById('selectRegionBtn').addEventListener('click', () => {
+      const regions = ['Oceania', 'Asia', 'Europe', 'Americas'];
+      const currentRegion = regions[regionCycle % regions.length];
+      
+      document.querySelectorAll('.index-checkbox').forEach(cb => {
+        const idx = INDEX_DEFS.find(i => i.code === cb.value);
+        cb.checked = idx && idx.region === currentRegion;
+      });
+      
+      regionCycle++;
+      document.getElementById('selectRegionBtn').textContent = 
+        `By Region (${regions[(regionCycle) % regions.length]})`;
+      
+      render();
+    });
+    refreshBtn.addEventListener('click', render);
+
+    // Add market hours checkbox listener
+    document.getElementById('showMarketHours').addEventListener('change', render);
+
+    window.addEventListener('resize', () => chart.resize());
+
+    function toPercentSeries(series) {
+      if (!series.length) return [];
+      const base = series[0].close ?? series[0].value;
+      return series.map(p => ({ time: p.time, value: ((p.close ?? p.value) / base - 1) * 100 }));
+    }
+
+    function get24HourDataZoom() {
+      return [
+        { 
+          type: 'inside',
+          start: 0,
+          end: 100
+        }, 
+        { 
+          type: 'slider',
+          start: 0,
+          end: 100,
+          height: 30
+        }
+      ];
+    }
+
+    function buildLineOption(seriesMap, selectedDate) {
+      // Filter series to only show data during market hours
+      const series = Object.entries(seriesMap)
+        .filter(([code, data]) => data.length > 0) // Only include markets with data
+        .map(([code, data]) => {
+          const idx = INDEX_DEFS.find(i => i.code === code);
+          return {
+            name: idx?.name || code,
+            type: 'line',
+            showSymbol: false,
+            smooth: true,
+            emphasis: { focus: 'series' },
+            lineStyle: { width: 2, color: idx?.color },
+            data: data.map(p => [p.time, p.value])
+          };
+        });
+
+      // Create 24-hour timeline
+      const baseDate = new Date(selectedDate + 'T00:00:00.000Z');
+      const endDate = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
+
+      const option = {
+        tooltip: { 
+          trigger: 'axis', 
+          valueFormatter: v => v!=null ? v.toFixed(2)+'%' : '',
+          axisPointer: { type: 'cross' }
+        },
+        legend: { show: false },
+        grid: { left: 60, right: 30, top: 40, bottom: 80 },
+        xAxis: { 
+          type: 'time',
+          min: baseDate,
+          max: endDate,
+          axisLabel: {
+            formatter: function(value) {
+              const date = new Date(value);
+              // Display as Australian local time (00:00 = midnight Sydney time)
+              const hours = date.getUTCHours().toString().padStart(2, '0');
+              const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+              return `${hours}:${minutes}`;
+            }
+          },
+          splitLine: {
+            show: true,
+            lineStyle: { type: 'dashed', color: '#e2e8f0' }
+          }
+        },
+        yAxis: { type:'value', axisLabel: { formatter: v => v+'%' } },
+        dataZoom: get24HourDataZoom(),
+        series
+      };
+
+      // Add market hours visualization if enabled
+      if (document.getElementById('showMarketHours')?.checked) {
+        option.graphic = getMarketHoursGraphics(selectedDate);
+      }
+
+      return option;
+    }
+
+    function getMarketHoursGraphics(selectedDate) {
+      const baseDate = new Date(selectedDate + 'T00:00:00.000Z');
+      const graphics = [];
+
+      INDEX_DEFS.forEach((idx, i) => {
+        const [openHour, openMin] = idx.marketOpen.split(':').map(Number);
+        const [closeHour, closeMin] = idx.marketClose.split(':').map(Number);
+        
+        const marketOpenTime = new Date(baseDate);
+        marketOpenTime.setUTCHours(openHour, openMin, 0, 0);
+        
+        const marketCloseTime = new Date(baseDate);
+        marketCloseTime.setUTCHours(closeHour, closeMin, 0, 0);
+        
+        // Handle markets that close the next day
+        if (closeHour < openHour) {
+          marketCloseTime.setUTCDate(marketCloseTime.getUTCDate() + 1);
+        }
+
+        // Add market name label
+        graphics.push({
+          type: 'text',
+          left: 70 + (i * 80),
+          top: 10,
+          style: {
+            text: idx.name.split(' ')[0], // Just the market name (e.g., "Nikkei", "FTSE")
+            fontSize: 10,
+            fill: idx.color,
+            fontWeight: 'bold'
+          },
+          z: 100
+        });
+      });
+
+      return graphics;
+    }
+
+    function buildCandleOption(candle, selectedDate) {
+      const selectedIdx = INDEX_DEFS.find(idx => idx.code === indexSelect.value);
+      
+      // Create 24-hour timeline
+      const baseDate = new Date(selectedDate + 'T00:00:00.000Z');
+      const endDate = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
+      
+      const option = {
+        tooltip: { 
+          trigger: 'axis',
+          formatter: function(params) {
+            if (!params || params.length === 0) return '';
+            const data = params[0];
+            const time = new Date(data.axisValue);
+            const timeStr = time.toLocaleString();
+            const ohlc = data.data;
+            return `${timeStr}<br/>
+                   Open: ${ohlc[1]?.toFixed(2)}<br/>
+                   High: ${ohlc[4]?.toFixed(2)}<br/>
+                   Low: ${ohlc[3]?.toFixed(2)}<br/>
+                   Close: ${ohlc[2]?.toFixed(2)}`;
+          }
+        },
+        legend: { show: false },
+        grid: { left: 60, right: 30, top: 40, bottom: 80 },
+        xAxis: { 
+          type: 'time',
+          min: baseDate,
+          max: endDate,
+          axisLabel: {
+            formatter: function(value) {
+              const date = new Date(value);
+              // Display as Australian local time (00:00 = midnight Sydney time)
+              const hours = date.getUTCHours().toString().padStart(2, '0');
+              const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+              return `${hours}:${minutes}`;
+            }
+          },
+          splitLine: {
+            show: true,
+            lineStyle: { type: 'dashed', color: '#e2e8f0' }
+          }
+        },
+        yAxis: { scale: true },
+        dataZoom: get24HourDataZoom(),
+        series: candle.length > 0 ? [
+          { 
+            type: 'candlestick', 
+            name: 'OHLC', 
+            data: candle.map(p => [p.time, p.open, p.close, p.low, p.high]),
+            itemStyle: {
+              color: selectedIdx?.color || '#ef4444',
+              color0: selectedIdx?.color || '#ef4444',
+              borderColor: selectedIdx?.color || '#ef4444',
+              borderColor0: selectedIdx?.color || '#ef4444',
+            }
+          },
+          { 
+            type: 'line', 
+            name: 'Close', 
+            showSymbol: false, 
+            smooth: true, 
+            data: candle.map(p => [p.time, p.close]), 
+            lineStyle: { width: 1, color: '#64748b' } 
+          }
+        ] : []
+      };
+
+      // Add market hours indicator for the selected index
+      if (document.getElementById('showMarketHours')?.checked && selectedIdx) {
+        option.graphic = [{
+          type: 'text',
+          left: 70,
+          top: 5,
+          style: {
+            text: `Market Hours: ${selectedIdx.marketOpen} - ${selectedIdx.marketClose} Australian Time (${selectedIdx.timezone})`,
+            fontSize: 12,
+            fill: selectedIdx.color
+          }
+        }];
+      }
+
+      return option;
+    }
+
+    function updateLegend(list) {
+      legendList.innerHTML = '';
+      list.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'legend-badge';
+        li.innerHTML = `<span class="legend-dot" style="background:${item.color}"></span><span>${item.name}</span>`;
+        legendList.appendChild(li);
+      });
+    }
+
+    async function render() {
+      const mode = modeSelect.value;
+      const interval = intervalSelect.value;
+      const selectedDate = dateSelect.value;
+      const provider = providerSelect.value;
+
+      if (!selectedDate) return;
+
+      chart.showLoading('default', { maskColor: 'rgba(255,255,255,0.6)' });
+      try {
+        if (mode === 'line') {
+          const selectedCodes = getSelectedIndices();
+          if (selectedCodes.length === 0) {
+            chart.setOption({ 
+              title: { text: 'Please select at least one index', left: 'center', textStyle: { color: '#64748b' } },
+              series: []
+            });
+            updateLegend([]);
+            return;
+          }
+
+          const results = await Promise.all(selectedCodes.map(c => getSeries(c, interval, selectedDate, provider)));
+          const percentSeries = {};
+          
+          // Only include markets that have data and are selected
+          selectedCodes.forEach((code, i) => {
+            if (results[i].length > 0) {
+              percentSeries[code] = toPercentSeries(results[i]);
+            }
+          });
+          
+          const opt = buildLineOption(percentSeries, selectedDate);
+          chart.setOption(opt, true);
+          
+          // Update legend to only show active selected markets
+          const activeIndices = INDEX_DEFS.filter(idx => percentSeries[idx.code]);
+          updateLegend(activeIndices);
+        } else {
+          const code = indexSelect.value;
+          const idx = INDEX_DEFS.find(i => i.code === code) || { name: code, color: '#000' };
+          const data = await getSeries(code, interval, selectedDate, provider);
+          const opt = buildCandleOption(data, selectedDate);
+          chart.setOption(opt, true);
+          updateLegend([idx]);
+        }
+      } catch (e) {
+        console.error(e);
+        chart.setOption({ title: { text: 'Error loading data', left: 'center' } });
+      } finally {
+        chart.hideLoading();
+      }
+    }
+
+    render();
+  </script>
+</body>
+</html>
+<body class="bg-slate-50 min-h-screen">
+  <div class="container mx-auto p-4 max-w-7xl">
+    <!-- Header -->
+    <div class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h1 class="text-xl font-semibold">Global Markets Tracker <span class="text-green-600">Live</span></h1>
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2" id="apiStatus">
+            <span class="text-xs font-medium" id="statusIndicator">🟡 Loading live data...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div class="flex items-center gap-2">
+          <label for="modeSelect" class="text-sm text-slate-600">View</label>
+          <select id="modeSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="line">Line (Multi)</option>
+            <option value="candle">Candlestick (Single)</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <label for="intervalSelect" class="text-sm text-slate-600">Interval</label>
+          <select id="intervalSelect" class="border rounded-md px-2 py-1 text-sm">
+            <option value="5m">5 Minutes</option>
+            <option value="15m">15 Minutes</option>
+            <option value="30m">30 Minutes</option>
+            <option value="1h">1 Hour</option>
+            <option value="1d">1 Day</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <label for="dateSelect" class="text-sm text-slate-600">Date</label>
+          <input type="date" id="dateSelect" class="border rounded-md px-2 py-1 text-sm" />
+        </div>
+        
+        <button id="refreshBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Index Selection (for multi-line mode) -->
+    <div id="indexSelectionWrap" class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <h3 class="text-sm font-medium text-slate-700 mb-3">Select Markets to Compare (Live Data)</h3>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3" id="indexCheckboxes">
+        <!-- Checkboxes will be populated by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Single Index Selection (for candlestick mode) -->
+    <div id="singleIndexWrap" class="bg-white rounded-lg shadow-sm border p-4 mb-6" style="display: none;">
+      <h3 class="text-sm font-medium text-slate-700 mb-3">Select Market for Candlestick View</h3>
+      <select id="indexSelect" class="border rounded-md px-2 py-1 text-sm w-full sm:w-auto">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+    </div>
+
+    <!-- Chart -->
+    <div class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+      <div id="chart" style="height: 600px;"></div>
+    </div>
+
+    <!-- Legend -->
+    <div class="bg-white rounded-lg shadow-sm border p-4">
+      <h3 class="text-sm font-medium text-slate-700 mb-3">Legend</h3>
+      <div class="flex flex-wrap gap-3" id="legendList">
+        <!-- Legend will be populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Market Index Definitions with Live Data
+    const INDEX_DEFS = [
+      // Australian Markets
+      { code: '^AXJO', name: 'ASX 200 (AU)', color: getCSS('--color-asx200'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AXKO', name: 'ASX 300 (AU)', color: getCSS('--color-asx300'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AFLI', name: 'ASX 50 (AU)', color: getCSS('--color-asx50'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AXMD', name: 'ASX 100 (AU)', color: getCSS('--color-asx100'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      { code: '^AXSO', name: 'ASX Small Cap (AU)', color: getCSS('--color-asx-small'), marketOpen: '01:00', marketClose: '07:00', timezone: 'AEST', region: 'Australia' },
+      
+      // Asian Markets
+      { code: '^N225', name: 'Nikkei 225 (JP)', color: getCSS('--color-nikkei'), marketOpen: '01:00', marketClose: '07:00', timezone: 'JST', region: 'Asia' },
+      { code: '^HSI', name: 'Hang Seng (HK)', color: getCSS('--color-hsi'), marketOpen: '03:30', marketClose: '10:00', timezone: 'HKT', region: 'Asia' },
+      { code: '000001.SS', name: 'SSE Composite (CN)', color: getCSS('--color-sse'), marketOpen: '03:30', marketClose: '09:00', timezone: 'CST', region: 'Asia' },
+      { code: '^NSEI', name: 'NIFTY 50 (IN)', color: getCSS('--color-nifty'), marketOpen: '05:15', marketClose: '11:30', timezone: 'IST', region: 'Asia' },
+      
+      // European Markets  
+      { code: '^FTSE', name: 'FTSE 100 (UK)', color: getCSS('--color-ftse'), marketOpen: '09:00', marketClose: '17:30', timezone: 'GMT', region: 'Europe' },
+      { code: '^GDAXI', name: 'DAX (DE)', color: getCSS('--color-dax'), marketOpen: '09:00', marketClose: '17:30', timezone: 'CET', region: 'Europe' },
+      { code: '^FCHI', name: 'CAC 40 (FR)', color: getCSS('--color-cac'), marketOpen: '09:00', marketClose: '17:30', timezone: 'CET', region: 'Europe' },
+      
+      // US Markets
+      { code: '^GSPC', name: 'S&P 500 (US)', color: getCSS('--color-sp500'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+      { code: '^DJI', name: 'Dow Jones (US)', color: getCSS('--color-djia'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+      { code: '^IXIC', name: 'NASDAQ (US)', color: getCSS('--color-nasdaq'), marketOpen: '01:30', marketClose: '08:00', timezone: 'EST', region: 'Americas' },
+    ];
+
+    function getCSS(prop) {
+      return getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
+    }
+
+    function intervalToMs(interval) {
+      const map = { '5m': 5*60*1000, '15m': 15*60*1000, '30m': 30*60*1000, '1h': 60*60*1000, '1d': 24*60*60*1000 };
+      return map[interval] || 5*60*1000;
+    }
+    // Live Data Fetching Function
+    async function fetchLiveData(symbol, interval, selectedDate) {
+      const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000'
+        : 'https://global-indices-tracker-production.up.railway.app';
+      
+      try {
+        console.log(`🔄 Fetching live data: ${symbol}, interval: ${interval}, date: ${selectedDate}`);
+        
+        const response = await fetch(
+          `${API_BASE}/api/stock/${encodeURIComponent(symbol)}?interval=${interval}&date=${selectedDate}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        console.log('API Response status:', response.status, response.statusText);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error Response:', errorText);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const json = await response.json();
+        console.log('API Response data:', json);
+        
+        if (json.error) {
+          throw new Error(json.error);
+        }
+        
+        // Check if we have data
+        if (!json.data || json.data.length === 0) {
+          console.warn('API returned no data for', symbol);
+          throw new Error('No market data available');
+        }
+        
+        console.log(`✅ Successfully got ${json.data.length} data points from live API`);
+        
+        // Transform API response to expected format
+        return json.data.map(item => ({
+          time: new Date(item.time),
+          open: item.open || 0,
+          high: item.high || 0,
+          low: item.low || 0,
+          close: item.close || 0,
+          value: item.value || item.close || 0
+        }));
+        
+      } catch (error) {
+        console.error('Live data fetch error:', error);
+        throw error;
+      }
+    }
+
+    // Get Live Series Data
+    async function getLiveData(symbol, interval, selectedDate) {
+      try { 
+        updateApiStatus('🟡 Fetching live data...', 'text-blue-600');
+        const data = await fetchLiveData(symbol, interval, selectedDate);
+        updateApiStatus('🟢 Live market data', 'text-green-600');
+        console.log(`✅ Successfully loaded ${data.length} live data points for ${symbol}`);
+        return data;
+      }
+      catch(error) { 
+        console.error('Live data error:', error);
+        updateApiStatus('🔴 Connection error', 'text-red-600');
+        throw error;
+      }
+    }
+
+    function updateApiStatus(message, colorClass) {
+      const indicator = document.getElementById('statusIndicator');
+      if (indicator) {
+        indicator.textContent = message;
+        indicator.className = `text-xs font-medium ${colorClass}`;
+      }
+    }
+    // DOM Elements
+    const chart = echarts.init(document.getElementById('chart'));
+    const modeSelect = document.getElementById('modeSelect');
+    const intervalSelect = document.getElementById('intervalSelect');
+    const dateSelect = document.getElementById('dateSelect');
+    const indexSelect = document.getElementById('indexSelect');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const legendList = document.getElementById('legendList');
+    const indexSelectionWrap = document.getElementById('indexSelectionWrap');
+    const singleIndexWrap = document.getElementById('singleIndexWrap');
+
+    // Set default date to today
+    dateSelect.value = new Date().toISOString().split('T')[0];
+
+    // Populate checkboxes and dropdowns
+    function populateIndexControls() {
+      const checkboxContainer = document.getElementById('indexCheckboxes');
+      
+      INDEX_DEFS.forEach(idx => {
+        // Multi-select checkboxes
+        const wrapper = document.createElement('div');
+        wrapper.className = 'flex items-center space-x-2';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `idx_${idx.code}`;
+        checkbox.value = idx.code;
+        checkbox.className = 'rounded border-gray-300';
+        
+        // Default selections for demo
+        if (['^AXJO', '^GSPC', '^N225'].includes(idx.code)) {
+          checkbox.checked = true;
+        }
+        
+        const label = document.createElement('label');
+        label.htmlFor = `idx_${idx.code}`;
+        label.textContent = idx.name;
+        label.className = 'text-sm text-gray-700 cursor-pointer';
+        
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(label);
+        checkboxContainer.appendChild(wrapper);
+        
+        // Single select dropdown
+        const option = document.createElement('option');
+        option.value = idx.code;
+        option.textContent = idx.name;
+        indexSelect.appendChild(option);
+      });
+    }
+
+    function getSelectedIndices() {
+      const checkboxes = document.querySelectorAll('#indexCheckboxes input[type="checkbox"]:checked');
+      return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    function toggleMode() {
+      const mode = modeSelect.value;
+      if (mode === 'line') {
+        indexSelectionWrap.style.display = 'block';
+        singleIndexWrap.style.display = 'none';
+      } else {
+        indexSelectionWrap.style.display = 'none';  
+        singleIndexWrap.style.display = 'block';
+      }
+    }
+    function buildLineOption(percentSeries, selectedDate) {
+      const series = Object.keys(percentSeries).map(code => {
+        const idx = INDEX_DEFS.find(i => i.code === code);
+        return {
+          name: idx ? idx.name : code,
+          type: 'line',
+          data: percentSeries[code],
+          smooth: true,
+          lineStyle: { color: idx ? idx.color : '#000', width: 2 },
+          itemStyle: { color: idx ? idx.color : '#000' }
+        };
+      });
+
+      return {
+        title: { text: `Global Markets - ${selectedDate}`, left: 'center' },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+        xAxis: { type: 'time', boundaryGap: false },
+        yAxis: { type: 'value', name: 'Change (%)' },
+        series: series,
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true }
+      };
+    }
+
+    function buildCandleOption(data, selectedDate) {
+      const candleData = data.map(d => [d.open, d.close, d.low, d.high]);
+      const times = data.map(d => d.time);
+
+      return {
+        title: { text: `Candlestick - ${selectedDate}`, left: 'center' },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: times, boundaryGap: false },
+        yAxis: { type: 'value' },
+        series: [{
+          type: 'candlestick',
+          data: candleData,
+          itemStyle: {
+            color: '#26a69a',
+            color0: '#ef5350',
+            borderColor: '#26a69a', 
+            borderColor0: '#ef5350'
+          }
+        }],
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true }
+      };
+    }
+
+    function updateLegend(activeIndices) {
+      legendList.innerHTML = '';
+      activeIndices.forEach(idx => {
+        const item = document.createElement('div');
+        item.className = 'legend-badge';
+        item.innerHTML = `<div class="legend-dot" style="background-color: ${idx.color};"></div><span class="text-sm">${idx.name}</span>`;
+        legendList.appendChild(item);
+      });
+    }
+    async function render() {
+      const mode = modeSelect.value;
+      const interval = intervalSelect.value;
+      const selectedDate = dateSelect.value;
+
+      if (!selectedDate) return;
+
+      chart.showLoading('default', { maskColor: 'rgba(255,255,255,0.6)' });
+      try {
+        if (mode === 'line') {
+          const selectedCodes = getSelectedIndices();
+          if (selectedCodes.length === 0) {
+            chart.setOption({
+              title: { text: 'Please select at least one index', left: 'center', textStyle: { color: '#64748b' } },
+              series: []
+            });
+            updateLegend([]);
+            return;
+          }
+
+          const results = await Promise.all(selectedCodes.map(c => getLiveData(c, interval, selectedDate)));
+          const percentSeries = {};
+          
+          results.forEach((data, i) => {
+            const code = selectedCodes[i];
+            if (data.length > 0) {
+              const base = data[0].value;
+              percentSeries[code] = data.map(d => [d.time, ((d.value - base) / base * 100).toFixed(2)]);
+            }
+          });
+          
+          const opt = buildLineOption(percentSeries, selectedDate);
+          chart.setOption(opt, true);
+          
+          // Update legend to only show active selected markets
+          const activeIndices = INDEX_DEFS.filter(idx => percentSeries[idx.code]);
+          updateLegend(activeIndices);
+        } else {
+          const code = indexSelect.value;
+          const idx = INDEX_DEFS.find(i => i.code === code) || { name: code, color: '#000' };
+          const data = await getLiveData(code, interval, selectedDate);
+          const opt = buildCandleOption(data, selectedDate);
+          chart.setOption(opt, true);
+          updateLegend([idx]);
+        }
+      } catch (e) {
+        console.error('Render error:', e);
+        updateApiStatus('🔴 Data loading failed', 'text-red-600');
+        chart.setOption({ 
+          title: { text: 'Error loading live data - please try again', left: 'center', textStyle: { color: '#ef4444' } },
+          series: []
+        });
+      } finally {
+        chart.hideLoading();
+      }
+    }
+    // Test API connection on page load
+    async function testApiConnection() {
+      const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000'
+        : 'https://global-indices-tracker-production.up.railway.app';
+      
+      try {
+        console.log('🔄 Testing API connection...');
+        const response = await fetch(`${API_BASE}/api/health`);
+        const data = await response.json();
+        
+        if (data.status === 'healthy') {
+          console.log('✅ API Connection Success:', data.message);
+          updateApiStatus('🟢 Live data ready', 'text-green-600');
+          
+          // Trigger a render with live data
+          console.log('🔄 Loading initial live data...');
+          setTimeout(render, 500);
+        } else {
+          console.log('⚠️ API Unhealthy:', data);
+          updateApiStatus('🟡 API issues', 'text-yellow-600');
+        }
+      } catch (error) {
+        console.error('❌ API Connection Failed:', error);
+        updateApiStatus('🔴 Connection failed', 'text-red-600');
+      }
+    }
+
+    // Event Listeners
+    modeSelect.addEventListener('change', () => { toggleMode(); render(); });
+    [intervalSelect, dateSelect].forEach(el => el.addEventListener('change', render));
+    refreshBtn.addEventListener('click', render);
+    
+    // Checkbox change listeners
+    document.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox' && e.target.closest('#indexCheckboxes')) {
+        render();
+      }
+    });
+
+    // Initialize
+    populateIndexControls();
+    toggleMode();
+    testApiConnection();
+  </script>
+</body>
+</html>
